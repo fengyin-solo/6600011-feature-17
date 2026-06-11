@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useEEGStore } from '../store/eeg';
+import { useEEGStore, RecordingSuggestion } from '../store/eeg';
 import { Recording } from '../types';
+import { getStateEmoji, getStateColor } from '../utils/recordingName';
 
 const CHANNEL_NAMES: Record<string, string> = {
   Fp1: '左前额', Fp2: '右前额', F3: '左额', F4: '右额',
@@ -45,6 +46,7 @@ export const RecordingPanel: React.FC = () => {
   const [recordingName, setRecordingName] = useState('');
   const [showNameDialog, setShowNameDialog] = useState(false);
   const [elapsedTime, setElapsedTime] = useState(0);
+  const [suggestion, setSuggestion] = useState<RecordingSuggestion | null>(null);
   const timerRef = useRef<number | null>(null);
   const playbackTimerRef = useRef<number | null>(null);
 
@@ -94,7 +96,18 @@ export const RecordingPanel: React.FC = () => {
   };
 
   const handleStopRecording = () => {
+    const s = useEEGStore.getState().getRecordingSuggestion();
+    setSuggestion(s);
+    if (s) {
+      setRecordingName(s.suggestedName);
+    }
     setShowNameDialog(true);
+  };
+
+  const handleUseSuggestion = () => {
+    if (suggestion) {
+      setRecordingName(suggestion.suggestedName);
+    }
   };
 
   const handleConfirmSave = () => {
@@ -111,6 +124,7 @@ export const RecordingPanel: React.FC = () => {
     });
     setShowNameDialog(false);
     setRecordingName('');
+    setSuggestion(null);
   };
 
   const handlePlayRecording = (recording: Recording) => {
@@ -464,17 +478,155 @@ export const RecordingPanel: React.FC = () => {
             background: '#fff',
             padding: '24px',
             borderRadius: '12px',
-            width: '320px',
+            width: '380px',
             boxShadow: '0 8px 32px rgba(0,0,0,0.2)',
           }}>
-            <h4 style={{ margin: '0 0 16px', fontSize: '16px', color: '#333' }}>
-              保存录制
+            <h4 style={{ margin: '0 0 4px', fontSize: '16px', color: '#333', display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <span>💡</span>
+              智能命名建议
             </h4>
+            <p style={{ margin: '0 0 16px', fontSize: '12px', color: '#999' }}>
+              系统根据录制内容自动生成，包含日期、通道和状态特征
+            </p>
+
+            {suggestion && (
+              <>
+                <div style={{
+                  background: 'linear-gradient(135deg, #f3e5f5, #e1bee7)',
+                  borderRadius: '8px',
+                  padding: '12px',
+                  marginBottom: '12px',
+                }}>
+                  <div style={{ fontSize: '11px', color: '#7b1fa2', marginBottom: '4px', fontWeight: 500 }}>
+                    建议名称
+                  </div>
+                  <div style={{ fontSize: '14px', fontWeight: 600, color: '#4a148c', wordBreak: 'break-all' }}>
+                    {suggestion.suggestedName}
+                  </div>
+                </div>
+
+                <div style={{
+                  display: 'grid',
+                  gridTemplateColumns: '1fr 1fr',
+                  gap: '8px',
+                  marginBottom: '12px',
+                }}>
+                  <div style={{
+                    background: '#f5f5f5',
+                    borderRadius: '6px',
+                    padding: '8px 10px',
+                  }}>
+                    <div style={{ fontSize: '10px', color: '#999', marginBottom: '2px' }}>📅 日期</div>
+                    <div style={{ fontSize: '13px', fontWeight: 500, color: '#333' }}>{suggestion.components.date}</div>
+                  </div>
+                  <div style={{
+                    background: '#f5f5f5',
+                    borderRadius: '6px',
+                    padding: '8px 10px',
+                  }}>
+                    <div style={{ fontSize: '10px', color: '#999', marginBottom: '2px' }}>⏰ 时间</div>
+                    <div style={{ fontSize: '13px', fontWeight: 500, color: '#333' }}>{suggestion.components.time}</div>
+                  </div>
+                  <div style={{
+                    background: '#f5f5f5',
+                    borderRadius: '6px',
+                    padding: '8px 10px',
+                  }}>
+                    <div style={{ fontSize: '10px', color: '#999', marginBottom: '2px' }}>📍 通道</div>
+                    <div style={{ fontSize: '13px', fontWeight: 500, color: '#333' }}>{suggestion.components.channelLabel}</div>
+                  </div>
+                  <div style={{
+                    background: '#f5f5f5',
+                    borderRadius: '6px',
+                    padding: '8px 10px',
+                  }}>
+                    <div style={{ fontSize: '10px', color: '#999', marginBottom: '2px' }}>
+                      {getStateEmoji(suggestion.components.state)} 主导状态
+                    </div>
+                    <div style={{ fontSize: '13px', fontWeight: 500, color: getStateColor(suggestion.components.state) }}>
+                      {suggestion.components.stateLabel}
+                    </div>
+                  </div>
+                </div>
+
+                <div style={{
+                  background: '#fafafa',
+                  borderRadius: '6px',
+                  padding: '10px 12px',
+                  marginBottom: '12px',
+                }}>
+                  <div style={{ fontSize: '11px', color: '#666', marginBottom: '6px', fontWeight: 500 }}>
+                    📊 状态分布 ({suggestion.analysis.stateDistribution.focused + suggestion.analysis.stateDistribution.relaxed + suggestion.analysis.stateDistribution.fatigued + suggestion.analysis.stateDistribution.neutral} 帧)
+                  </div>
+                  <div style={{ display: 'flex', gap: '6px', marginBottom: '6px' }}>
+                    {(['focused', 'relaxed', 'fatigued', 'neutral'] as const).map((state) => {
+                      const total = suggestion.analysis.stateDistribution.focused + suggestion.analysis.stateDistribution.relaxed + suggestion.analysis.stateDistribution.fatigued + suggestion.analysis.stateDistribution.neutral;
+                      const count = suggestion.analysis.stateDistribution[state] || 0;
+                      const percent = total > 0 ? (count / total) * 100 : 0;
+                      const labels: Record<string, string> = { focused: '专注', relaxed: '放松', fatigued: '疲劳', neutral: '平稳' };
+                      return (
+                        <div key={state} style={{ flex: 1, textAlign: 'center' }}>
+                          <div style={{
+                            height: '4px',
+                            background: '#eee',
+                            borderRadius: '2px',
+                            overflow: 'hidden',
+                            marginBottom: '2px',
+                          }}>
+                            <div style={{
+                              height: '100%',
+                              width: `${percent}%`,
+                              background: getStateColor(state),
+                              transition: 'width 0.3s',
+                            }} />
+                          </div>
+                          <div style={{ fontSize: '9px', color: getStateColor(state), fontWeight: 500 }}>
+                            {labels[state]} {percent.toFixed(0)}%
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-around', fontSize: '10px', color: '#999' }}>
+                    <span>专注 {suggestion.analysis.avgFocus.toFixed(0)}</span>
+                    <span>放松 {suggestion.analysis.avgRelaxation.toFixed(0)}</span>
+                    <span>疲劳 {suggestion.analysis.avgFatigue.toFixed(0)}</span>
+                  </div>
+                </div>
+
+                <button
+                  onClick={handleUseSuggestion}
+                  style={{
+                    width: '100%',
+                    padding: '8px',
+                    background: '#f3e5f5',
+                    color: '#7b1fa2',
+                    border: '1px solid #ce93d8',
+                    borderRadius: '6px',
+                    fontSize: '12px',
+                    fontWeight: 500,
+                    cursor: 'pointer',
+                    marginBottom: '12px',
+                  }}
+                >
+                  🔄 重新生成建议
+                </button>
+              </>
+            )}
+
+            <div style={{
+              fontSize: '12px',
+              color: '#666',
+              marginBottom: '6px',
+              fontWeight: 500,
+            }}>
+              录制名称
+            </div>
             <input
               type="text"
               value={recordingName}
               onChange={(e) => setRecordingName(e.target.value)}
-              placeholder="输入录制名称（可选）"
+              placeholder="可编辑或直接使用建议名称"
               autoFocus
               style={{
                 width: '100%',

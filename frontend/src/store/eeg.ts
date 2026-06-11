@@ -1,5 +1,6 @@
 import { create } from 'zustand';
-import { EEGData, BandPower, BrainState, CorrelationData, Recording, RecordingFrame, PlaybackState } from '../types';
+import { EEGData, BandPower, BrainState, CorrelationData, Recording, RecordingFrame, PlaybackState, RecordingAnalysis } from '../types';
+import { analyzeRecordingFrames, generateNameComponents, generateSuggestedName, NameComponents } from '../utils/recordingName';
 
 const STORAGE_KEY = 'eeg_recordings';
 
@@ -17,6 +18,12 @@ const saveRecordings = (recordings: Recording[]) => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(recordings));
   } catch {}
 };
+
+export interface RecordingSuggestion {
+  suggestedName: string;
+  components: NameComponents;
+  analysis: RecordingAnalysis;
+}
 
 interface EEGState {
   eegData: EEGData | null;
@@ -47,6 +54,7 @@ interface EEGState {
   setPlaybackTime: (time: number) => void;
   togglePlayback: () => void;
   setPlaybackPlaying: (playing: boolean) => void;
+  getRecordingSuggestion: () => RecordingSuggestion | null;
 }
 
 export const useEEGStore = create<EEGState>((set, get) => ({
@@ -89,16 +97,20 @@ export const useEEGStore = create<EEGState>((set, get) => ({
       set({ isRecording: false, currentRecordingFrames: [] });
       return;
     }
+    const analysis = analyzeRecordingFrames(currentRecordingFrames);
+    const components = generateNameComponents(recordingStartTime, selectedChannel, analysis);
+    const defaultName = generateSuggestedName(components);
     const endTime = Date.now();
     const duration = (endTime - recordingStartTime) / 1000;
     const newRecording: Recording = {
       id: `rec_${endTime}`,
-      name: name || `录制 ${new Date(recordingStartTime).toLocaleString()}`,
+      name: name.trim() || defaultName,
       channel: selectedChannel,
       startTime: recordingStartTime,
       endTime,
       duration,
       frames: currentRecordingFrames,
+      analysis,
     };
     const recordings = [...get().recordings, newRecording];
     saveRecordings(recordings);
@@ -192,5 +204,13 @@ export const useEEGStore = create<EEGState>((set, get) => ({
         isPlaying: playing,
       },
     });
+  },
+  getRecordingSuggestion: () => {
+    const { currentRecordingFrames, recordingStartTime, selectedChannel } = get();
+    if (currentRecordingFrames.length === 0) return null;
+    const analysis = analyzeRecordingFrames(currentRecordingFrames);
+    const components = generateNameComponents(recordingStartTime, selectedChannel, analysis);
+    const suggestedName = generateSuggestedName(components);
+    return { suggestedName, components, analysis };
   },
 }));

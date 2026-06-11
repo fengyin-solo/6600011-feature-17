@@ -27,6 +27,15 @@ export interface RecordingFrame {
   brainState: BrainState;
 }
 
+export interface RecordingAnalysis {
+  dominantState: 'focused' | 'relaxed' | 'fatigued' | 'neutral';
+  dominantStateLabel: string;
+  avgFocus: number;
+  avgRelaxation: number;
+  avgFatigue: number;
+  stateDistribution: Record<string, number>;
+}
+
 export interface Recording {
   id: string;
   name: string;
@@ -35,6 +44,7 @@ export interface Recording {
   endTime: number;
   duration: number;
   frames: RecordingFrame[];
+  analysis?: RecordingAnalysis;
 }
 
 export interface PlaybackState {
